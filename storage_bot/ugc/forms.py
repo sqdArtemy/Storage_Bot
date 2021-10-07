@@ -1,5 +1,6 @@
 from django import forms
-from .models import Category, Company, Product, Profile, Storage 
+from django.forms import widgets
+from .models import Application, Category, Company, Product, Profile, Storage
 
 # Тут редактируется отображение  объектов в админке Джанго
 
@@ -76,4 +77,19 @@ class ProductForm(forms.ModelForm):
         widgets = {
             'name': forms.TextInput,
             'measurement': forms.TextInput,
+        }
+
+class StatusForm(forms.ModelForm):
+
+    class Meta:
+        model = Application
+        fields = (
+            'company',
+            'storage',
+            'product',
+            'amount',
+            'status',
+        )
+        widgets ={
+            'status': forms.TextInput,
         }

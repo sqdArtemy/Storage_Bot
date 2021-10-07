@@ -100,7 +100,6 @@ class Product(models.Model):
         verbose_name='Категория',
         on_delete = models.PROTECT,
     )
-
     name = models.TextField(
         verbose_name = 'Название'
     )
@@ -117,3 +116,31 @@ class Product(models.Model):
     class Meta:
         verbose_name = 'Товар'
         verbose_name_plural = 'Товары'
+
+# Модель для заявок
+class Application(models.Model):
+    company = models.ForeignKey(
+        to='ugc.Company',
+        verbose_name='Компания',
+        on_delete = models.PROTECT,
+    )
+    storage = models.ForeignKey(
+        to='ugc.Storage',
+        verbose_name='Склад',
+        on_delete= models.PROTECT,
+    )
+    product = models.ForeignKey(
+        to='ugc.Product',
+        verbose_name='Товар',
+        on_delete= models.PROTECT,
+    )
+    amount = models.IntegerField(
+        verbose_name='Количество',
+    )
+    status = models.TextField(
+        verbose_name = 'Статус',
+    )
+    
+    class Meta:
+        verbose_name = 'Заявка',
+        verbose_name_plural = 'Заявки'

@@ -7,7 +7,6 @@ from telegram import *
 from django.core.management.base import BaseCommand
 from ugc.models import Profile, Company, Storage, Category, Product
 
-
 # Пресеты кнопок
 button_companies = 'Компании'
 button_storages = 'Склады'
@@ -21,6 +20,7 @@ button_back = 'Назад'
 BTN_PLUS = "callback+"
 BTN_MINUS = "callback-"
 BTN_PROD = "callback1"
+BTN_SEND = "send_request"
 
 user_roles = ['Admin', 'Lab', 'S-Manager']
 
@@ -92,7 +92,7 @@ def selection(update: Update, b_type):
             )  
         )
 
-# Выводи тинформацию о предприятии
+# Выводит информацию о предприятии
 def info_about(update: Update, inf):
     if inf == Company:
         update.message.reply_text(
@@ -129,6 +129,7 @@ def base_inline_keyboard():
                 BTN_PROD: product.amount,
                 BTN_PLUS: "+",
                 BTN_MINUS: "-",
+                BTN_SEND: "Send",
             }
    
     keyboard = [
@@ -189,6 +190,7 @@ def keyboard_callback_handler(update: Update, context: CallbackContext):
                 )
         else: 
             query.answer('У вас нет разрешения на это.\n(Неподходящая роль/Склад не вашей компании)', True) # Выдаёт уведомление о невозможности действия
+
     else:
         pass
 
