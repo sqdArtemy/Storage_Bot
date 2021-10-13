@@ -1,11 +1,14 @@
-from os import name, stat_result
+from os import name
 from re import U
+
 from storage_bot.settings import TOKEN
 from telegram.ext import *
 from telegram import *
 
 from django.core.management.base import BaseCommand
-from ugc.models import Profile, Company, Storage, Category, Product
+from ugc.models import Applications, Profile, Company, Storage, Category, Product
+
+
 
 # Пресеты кнопок
 button_companies = 'Компании'
@@ -23,6 +26,7 @@ BTN_PROD = "callback1"
 BTN_SEND = "send_request"
 
 user_roles = ['Admin', 'Lab', 'S-Manager']
+amount_ch = 0 #Счётчик изменения количества
 
 # Отображает кнопочное меню в зависимоти от выбора категории
 def menu(update: Update, comp, m_type):
@@ -107,8 +111,9 @@ def info_about(update: Update, inf):
             )
         )
     elif inf == Storage:
+        chat_id = update.effective_message.chat_id
         update.message.reply_text(
-            text = f"Название: {storage_id.name} \n Адрес: {storage_id.adress} \n Локация: {storage_id.location}",
+            text = f"Название: {storage_id.name} \n Адрес: {storage_id.adress} \n Локация:",
             reply_markup = ReplyKeyboardMarkup(
                 keyboard = [
                     [
@@ -118,15 +123,19 @@ def info_about(update: Update, inf):
                 resize_keyboard=True
             )
         )
+        #Отправляет локацию склада
+        bot.send_location(chat_id = chat_id ,latitude = storage_id.latitude, longitude = storage_id.longitude)
+        
 
 
 # Создание инлайн клавиатуры в отдельной функции, чтобы потом навесить её на любое сообщение
 def base_inline_keyboard():
+
     products_db = Product.objects.all()
     for product in products_db:
         if product.name == prod_id.name and product.company == company_id and product.storage == storage_id:
             BTNS={
-                BTN_PROD: product.amount,
+                BTN_PROD: f'{product.amount} available',
                 BTN_PLUS: "+",
                 BTN_MINUS: "-",
                 BTN_SEND: "Send",
@@ -140,6 +149,9 @@ def base_inline_keyboard():
             InlineKeyboardButton(BTNS[BTN_PLUS], callback_data = BTN_PLUS),
             InlineKeyboardButton(BTNS[BTN_MINUS], callback_data = BTN_MINUS),
         ],
+        [
+            InlineKeyboardButton(BTNS[BTN_SEND], callback_data = BTN_SEND),
+        ]
     ]
     return InlineKeyboardMarkup(keyboard)
 
@@ -169,11 +181,12 @@ def keyboard_callback_handler(update: Update, context: CallbackContext):
         user_company = item.company
     
     if data == BTN_PLUS:
+        global amount_ch
         if (user_role == user_roles[0] or user_role == user_roles[2]) and str(user_company) == str(company_id):
-        # Проверяет все условия, чтобы редактировался только товар определённой компании на определёном складе
-            Product.objects.filter(name = prod_id.name, company = company_id, storage = storage_id).update(amount = p_amount + 1)
+            amount_ch += 1
+
             query.edit_message_text(
-                text=f'{prod_id.name} ({p_amount + 1} {prod_id.measurement})',
+                text=f'Вы хотите изменить {prod_id.name} на ({amount_ch} {prod_id.measurement})',
                 reply_markup=base_inline_keyboard(),
                 )
         else:
@@ -181,18 +194,37 @@ def keyboard_callback_handler(update: Update, context: CallbackContext):
 
     if data == BTN_MINUS:
         if (user_role == user_roles[0] or user_role == user_roles[1]) and str(user_company) == str(company_id):
-            # Проверяет все условия, чтобы редактировался только товар определённой компании на определёном складе
-            Product.objects.filter(name = prod_id.name, company = company_id, storage = storage_id).update(amount = p_amount - 1)
+            amount_ch -= 1
 
             query.edit_message_text(
-                text=f'{prod_id.name} ({p_amount - 1} {prod_id.measurement})',
+                text=f'Вы хотите изменить {prod_id.name} на ({amount_ch} {prod_id.measurement})',
                 reply_markup=base_inline_keyboard(),
                 )
         else: 
             query.answer('У вас нет разрешения на это.\n(Неподходящая роль/Склад не вашей компании)', True) # Выдаёт уведомление о невозможности действия
 
+    if data == BTN_SEND:
+        global stored_amount
+        a, _ = Applications.objects.get_or_create(
+            user_id = chat_id,
+            company = company_id,
+            storage = storage_id,
+            product = prod_id,
+            amount = amount_ch,
+            status = 'Waiting'
+            )
+
+        query.edit_message_text(
+            text = f'Заявка была отправлена, ожидайте !',
+        )
+        
+        #Обнуляем счётчит количества
+        amount_ch = 0
     else:
         pass
+
+
+
 
 # Проверяет все сообщения от пользователя
 def message_handler(update: Update, context: CallbackContext):
@@ -271,15 +303,20 @@ def message_handler(update: Update, context: CallbackContext):
 # Связь с джанго через команду
 class Command(BaseCommand):
     help = 'Storage Bot'
-    
+
     def handle(self, *args, **kwargs):
+        global bot
         updater = Updater(
             token = TOKEN,
             use_context = True,
         )
+        bot = Bot(
+            token = TOKEN,
+        )
 
-        updater.dispatcher.add_handler(MessageHandler(filters = Filters.all, callback = message_handler))
-        updater.dispatcher.add_handler(CallbackQueryHandler(callback=keyboard_callback_handler))
+        updater.dispatcher.add_handler(MessageHandler(filters = Filters.all, callback = message_handler, run_async = True))
+        updater.dispatcher.add_handler(CallbackQueryHandler(callback=keyboard_callback_handler, run_async = True))
 
         updater.start_polling()
         updater.idle()
+

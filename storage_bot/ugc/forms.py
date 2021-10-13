@@ -1,6 +1,6 @@
 from django import forms
 from django.forms import widgets
-from .models import Application, Category, Company, Product, Profile, Storage
+from .models import Applications, Category, Company, Product, Profile, Storage
 
 # Тут редактируется отображение  объектов в админке Джанго
 
@@ -44,7 +44,8 @@ class StorageForm(forms.ModelForm):
             'company',
             'name',
             'adress',
-            'location',
+            'longitude',
+            'latitude',
         )
         widgets = {
             'name': forms.TextInput,
@@ -82,13 +83,15 @@ class ProductForm(forms.ModelForm):
 class StatusForm(forms.ModelForm):
 
     class Meta:
-        model = Application
+        model = Applications
         fields = (
             'company',
             'storage',
             'product',
             'amount',
+            'user_id',
             'status',
+
         )
         widgets ={
             'status': forms.TextInput,

@@ -1,6 +1,7 @@
 from django.db import models
 from django.db.models.deletion import PROTECT
-
+from django.db.models.signals import class_prepared, post_save
+from django.dispatch import receiver
 # Create your models here.
 # Модель для профиля пользователя 
 class Profile(models.Model):
@@ -59,12 +60,15 @@ class Storage(models.Model):
     adress = models.TextField(
         verbose_name = 'Адресс'
     )
-    location = models.TextField(
-        verbose_name = 'Гео-локация'
+    latitude = models.FloatField(
+        verbose_name = 'Широта'
+    )
+    longitude = models.FloatField(
+        verbose_name= 'Долгота'
     )
 
     def __str__(self):
-        return f'Склад {self.name} компании {self.company}'# для более красивого отображения 
+        return f'{self.name}'# для более красивого отображения 
     
     class Meta:
         verbose_name = 'Склад'
@@ -106,19 +110,19 @@ class Product(models.Model):
     measurement = models.TextField(
         verbose_name = 'Ед. измер.'
     )
-    amount = models.BigIntegerField(
+    amount = models.FloatField(
         verbose_name = 'Количество'
     )
 
     def __str__(self):
-        return f'Товар {self.name} компании {self.company} на складе {self.storage}'# для более красивого отображения 
+        return f'{self.name}'# для более красивого отображения 
     
     class Meta:
         verbose_name = 'Товар'
         verbose_name_plural = 'Товары'
 
 # Модель для заявок
-class Application(models.Model):
+class Applications(models.Model):
     company = models.ForeignKey(
         to='ugc.Company',
         verbose_name='Компания',
@@ -134,13 +138,40 @@ class Application(models.Model):
         verbose_name='Товар',
         on_delete= models.PROTECT,
     )
-    amount = models.IntegerField(
+    amount = models.FloatField(
         verbose_name='Количество',
+    )
+    user_id = models.PositiveIntegerField(
+        verbose_name = 'ID пользователя',
     )
     status = models.TextField(
         verbose_name = 'Статус',
     )
-    
     class Meta:
         verbose_name = 'Заявка',
         verbose_name_plural = 'Заявки'
+
+
+# Функция которая проверяетс статус заявок 
+@receiver(post_save, sender = Applications)
+def applications_handler(sender, instance: Applications, **kwargs):
+    #Проверяет статус заявок и если она принята, то запрос в заявке вступает в силy
+    applications_db = Applications.objects.all()
+    for application in applications_db:
+        if str(application.status) == 'Accepted':
+
+            #Получает актуальное значение количества товара из БД
+            obj = Product.objects.filter(name = application.product, company = application.company, storage = application.storage).get()
+            field_object = Product._meta.get_field('amount')
+            amount_value = getattr(obj, field_object.attname)
+                    
+            #Проверяет достаточно ли значение для тогро, чтобы его изменить 
+        
+            if((0 > application.amount and abs(application.amount) <= amount_value) or (application.amount > 0)):
+                Product.objects.filter(name = application.product, company = application.company, storage = application.storage).update(amount = (amount_value + application.amount/2.0))
+                Applications.objects.filter(company = application.company, product = application.product, storage = application.storage).update(status = 'Done!')
+            else:
+                Applications.objects.filter(company = application.company, product = application.product, storage = application.storage).update(status = 'Denied')
+                
+        else:
+            pass
