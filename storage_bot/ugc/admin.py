@@ -6,7 +6,7 @@ from .models import Applications, Category, Product, Profile, Company, Storage
 # Регистрация объектов в админке джанго
 @admin.register(Profile)
 class ProfileAdmin(admin.ModelAdmin):
-    list_display = ('id', 'external_id', 'role', 'company')
+    list_display = ('id', 'external_id', 'role', 'company',)
     form = ProfileForm
 
 @admin.register(Company)
@@ -35,5 +35,4 @@ class ProfileAdmin(admin.ModelAdmin):
     form = StatusForm
 
     def save_model(self, request, obj, form, change):
-        obj.save()
         super(ProfileAdmin, self).save_model(request, obj, form, change)

@@ -8,31 +8,32 @@ from telegram import *
 from django.core.management.base import BaseCommand
 from ugc.models import Applications, Profile, Company, Storage, Category, Product
 
-
-
 # Пресеты кнопок
-button_companies = 'Компании'
-button_storages = 'Склады'
-button_categories  = 'Категории товаров'
-button_products = 'Товары'
-button_info_c = 'Информация о компании'
-button_info_s = 'Информация о складе'
-button_back = 'Назад'
+button_companies = 'Companies'
+button_storages = 'Storages'
+button_categories  = 'Categories'
+button_products = 'Products'
+button_info_c = 'Info about Comapany'
+button_info_s = 'Info about Storage'
+button_back = 'Back'
 
 # Кнопки изменения количества
 BTN_PLUS = "callback+"
 BTN_MINUS = "callback-"
-BTN_PROD = "callback1"
+BTN_PROD = "empty_callback"
 BTN_SEND = "send_request"
 
 user_roles = ['Admin', 'Lab', 'S-Manager']
-amount_ch = 0 #Счётчик изменения количества
+
+def get_id(update: Update):
+    chat_id = update.effective_message.chat_id
+    return chat_id
 
 # Отображает кнопочное меню в зависимоти от выбора категории
 def menu(update: Update, comp, m_type):
     if m_type == 'companies':
         update.message.reply_text(
-            text = f'Меню для компании: {comp}',
+            text = f'Menu for company: {comp}',
             reply_markup = ReplyKeyboardMarkup(
                 keyboard=[
                     [
@@ -46,9 +47,9 @@ def menu(update: Update, comp, m_type):
                 resize_keyboard= True
             )
         )
-    elif m_type == 'storages':
+    if m_type == 'storages':
         update.message.reply_text(
-            text = f'Меню для склада: {comp}',
+            text = f'Menu for storage: {comp}',
             reply_markup = ReplyKeyboardMarkup(
                 keyboard=[
                     [
@@ -84,7 +85,7 @@ def selection(update: Update, b_type):
             buttons.append(KeyboardButton(text = item.name))
     
     update.message.reply_text(
-            text = 'Список: ',
+            text = 'List: ',
             reply_markup= ReplyKeyboardMarkup(
                 keyboard=[
                     buttons,
@@ -100,7 +101,7 @@ def selection(update: Update, b_type):
 def info_about(update: Update, inf):
     if inf == Company:
         update.message.reply_text(
-            text = f"Название: {company_id.name} \n Область: {company_id.region} \n Город: {company_id.city} \n Адрес: {company_id.adress} \n Телефон: +{company_id.phone}",
+            text = f"Name: {company_id.name} \n Region: {company_id.region} \n City: {company_id.city} \n Address: {company_id.adress} \n Phone: +{company_id.phone}",
             reply_markup = ReplyKeyboardMarkup(
                 keyboard = [
                     [
@@ -113,7 +114,7 @@ def info_about(update: Update, inf):
     elif inf == Storage:
         chat_id = update.effective_message.chat_id
         update.message.reply_text(
-            text = f"Название: {storage_id.name} \n Адрес: {storage_id.adress} \n Локация:",
+            text = f"Name: {storage_id.name} \n Address: {storage_id.adress} \n Location:",
             reply_markup = ReplyKeyboardMarkup(
                 keyboard = [
                     [
@@ -169,62 +170,74 @@ def keyboard_callback_handler(update: Update, context: CallbackContext):
     query = update.callback_query
     data = query.data
 
-    products_db = Product.objects.all()
-    for item in products_db:
-        if item.name == prod_id.name and item.company == company_id and item.storage == storage_id:
-            p_amount = item.amount
-
     # Записывает роль юзера для дальнейшей проверки
     profiles_db = Profile.objects.filter(external_id = chat_id)
     for item in profiles_db:
         user_role = item.role
         user_company = item.company
-    
-    if data == BTN_PLUS:
-        global amount_ch
-        if (user_role == user_roles[0] or user_role == user_roles[2]) and str(user_company) == str(company_id):
-            amount_ch += 1
+        user_id = item.external_id
 
-            query.edit_message_text(
-                text=f'Вы хотите изменить {prod_id.name} на ({amount_ch} {prod_id.measurement})',
+    def user_change_amount():
+        profiles_db = Profile.objects.filter(external_id = chat_id)
+        for item in profiles_db:
+            user_change = float(item.change_amount)
+
+        return user_change
+
+    def user_change_prod():
+        profiles_db = Profile.objects.filter(external_id = chat_id)
+        for item in profiles_db:
+            prod_change = str(item.change_prod)
+
+        return prod_change
+
+    def changes_to(value, way):
+        if way == 'change':
+            Profile.objects.filter(external_id = user_id).update(change_amount = (float(user_change_amount())+float(value)))
+        else:
+            Profile.objects.filter(external_id = user_id).update(change_amount = 0)
+
+    def message_change():
+         query.edit_message_text(
+                text=f'You want to change {user_change_prod()} by ({user_change_amount()} {prod_id.measurement})',
                 reply_markup=base_inline_keyboard(),
                 )
+    
+    def callback_warn():
+        query.answer('You don`t have permission.\n(Inappropriate role/Not your company`s storage)', True)
+
+    if data == BTN_PLUS:
+        if (user_role == user_roles[0] or user_role == user_roles[2]) and str(user_company) == str(company_id):
+            changes_to(1, 'change')
+            message_change()
         else:
-            query.answer('У вас нет разрешения на это.\n(Неподходящая роль/Склад не вашей компании)', True) # Выдаёт уведомление о невозможности действия
+            callback_warn()
 
     if data == BTN_MINUS:
         if (user_role == user_roles[0] or user_role == user_roles[1]) and str(user_company) == str(company_id):
-            amount_ch -= 1
-
-            query.edit_message_text(
-                text=f'Вы хотите изменить {prod_id.name} на ({amount_ch} {prod_id.measurement})',
-                reply_markup=base_inline_keyboard(),
-                )
+            changes_to(-1, 'change')
+            message_change()
         else: 
-            query.answer('У вас нет разрешения на это.\n(Неподходящая роль/Склад не вашей компании)', True) # Выдаёт уведомление о невозможности действия
+            callback_warn()
 
     if data == BTN_SEND:
-        global stored_amount
         a, _ = Applications.objects.get_or_create(
             user_id = chat_id,
             company = company_id,
             storage = storage_id,
-            product = prod_id,
-            amount = amount_ch,
+            product = user_change_prod(),
+            amount = user_change_amount(),
             status = 'Waiting'
             )
 
         query.edit_message_text(
-            text = f'Заявка была отправлена, ожидайте !',
+            text = f'Application sent!',
         )
         
         #Обнуляем счётчит количества
-        amount_ch = 0
+        changes_to(0,'set_0')
     else:
         pass
-
-
-
 
 # Проверяет все сообщения от пользователя
 def message_handler(update: Update, context: CallbackContext):
@@ -280,9 +293,9 @@ def message_handler(update: Update, context: CallbackContext):
     products_db = Product.objects.all()
     for product in products_db:
         if text == product.name:
-            global prod_id, prod_amount
+            global prod_id
             prod_id = product
-            prod_amount = product.amount
+            Profile.objects.filter(external_id = get_id(update)).update(change_prod = str(product))
 
             return product_adjustments(update, product)
 
@@ -296,9 +309,11 @@ def message_handler(update: Update, context: CallbackContext):
     )
 
     update.message.reply_text(
-        text = 'Здравсвтуйте, выберите компанию:',
+        text = 'Hello there, choose company:',
         reply_markup = reply_markup,
     )
+
+    Profile.objects.filter(external_id = get_id(update)).update(change_amount = 0)
 
 # Связь с джанго через команду
 class Command(BaseCommand):

@@ -11,11 +11,14 @@ class ProfileForm(forms.ModelForm):
         fields = (
             'external_id',
             'role',
-            'company'
+            'company',
+            'change_amount',
+            'change_prod'
         )
         widgets = {
             'role': forms.TextInput,
             'company': forms.TextInput,
+            'change_prod': forms.TextInput,
         }
 
 class CompanyForm(forms.ModelForm):
@@ -95,4 +98,13 @@ class StatusForm(forms.ModelForm):
         )
         widgets ={
             'status': forms.TextInput,
+            'product': forms.TextInput,
         }
+    
+    statuses = [('Accepted','Accepted'), ('Denied','Denied'), ('Waiting','Waiting'), ('Done!','Done!')]
+    #Adds choice field in order to hcange the status
+    def __init__(self, *args, **kwargs):
+       super(StatusForm, self).__init__(*args, **kwargs)
+       if self.instance.id:
+           self.fields['status'] = forms.ChoiceField(
+                choices= self.statuses)

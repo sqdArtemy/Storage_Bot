@@ -1,8 +1,12 @@
 from django.db import models
-from django.db.models.deletion import PROTECT
-from django.db.models.signals import class_prepared, post_save
+from django.db.models.signals import post_save
 from django.dispatch import receiver
-# Create your models here.
+from telegram import Bot
+from telegram.update import Update
+from storage_bot.settings import TOKEN
+
+bot = Bot(token= TOKEN)
+
 # Модель для профиля пользователя 
 class Profile(models.Model):
     external_id = models.PositiveIntegerField(
@@ -15,6 +19,15 @@ class Profile(models.Model):
     company = models.TextField(
         verbose_name = 'Компания'
     )
+    change_amount = models.FloatField(
+        verbose_name= 'Количество для изменения',
+        default = 0
+    )
+    change_prod = models.TextField(
+        verbose_name= 'Продукт для изменения',
+        default = 0
+    )
+    
     def __str__(self):
         return f'Id:{self.external_id}; Роль:{self.role}; Компания:{self.company}'# для более красивого отображения 
 
@@ -133,10 +146,8 @@ class Applications(models.Model):
         verbose_name='Склад',
         on_delete= models.PROTECT,
     )
-    product = models.ForeignKey(
-        to='ugc.Product',
+    product = models.TextField(
         verbose_name='Товар',
-        on_delete= models.PROTECT,
     )
     amount = models.FloatField(
         verbose_name='Количество',
@@ -168,8 +179,9 @@ def applications_handler(sender, instance: Applications, **kwargs):
             #Проверяет достаточно ли значение для тогро, чтобы его изменить 
         
             if((0 > application.amount and abs(application.amount) <= amount_value) or (application.amount > 0)):
-                Product.objects.filter(name = application.product, company = application.company, storage = application.storage).update(amount = (amount_value + application.amount/2.0))
+                Product.objects.filter(name = application.product, company = application.company, storage = application.storage).update(amount = (amount_value + application.amount))
                 Applications.objects.filter(company = application.company, product = application.product, storage = application.storage).update(status = 'Done!')
+                bot.send_message(chat_id = application.user_id, text =  f'Your application for changing {application.product} to {application.amount} was accepted!')
             else:
                 Applications.objects.filter(company = application.company, product = application.product, storage = application.storage).update(status = 'Denied')
                 
