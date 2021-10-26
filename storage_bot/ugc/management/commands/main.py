@@ -68,17 +68,30 @@ def menu(update: Update, comp, m_type):
 # Создаёт определённые кнопки в заивисимости от выбранной категории
 def selection(update: Update, b_type):
     buttons = []
+    chat_id = get_id(update)
+
+    #Gets user`s company
+    user = Profile.objects.filter(external_id = chat_id).get()
+    comp_obj = Profile._meta.get_field('company')
+    user_comp = getattr(user, comp_obj.attname)
+
     # Собирает всю информацию со всех едениц, опять же, зависит от того, какую категорию мы выбираем
     items_db = b_type.objects.all()
-    
+
     # Проверяет принадлежит ли единица к выбранной компании
     if b_type == Storage:
         for item in items_db:
             if company_id == item.company:
                 buttons.append(KeyboardButton(text = item.name))
+
     elif b_type == Product:
         for item in items_db:
             if company_id == item.company and storage_id == item.storage and categ_id == item.category:
+                buttons.append(KeyboardButton(text = item.name))
+
+    elif b_type == Company:
+        for item in items_db:
+            if  item.name == user_comp:
                 buttons.append(KeyboardButton(text = item.name))
     else:
         for item in items_db:
@@ -264,7 +277,6 @@ def message_handler(update: Update, context: CallbackContext):
     
     elif text == button_categories:
         return selection(update, Category)
-
  
     companies_db = Company.objects.all()
     for company in companies_db:
