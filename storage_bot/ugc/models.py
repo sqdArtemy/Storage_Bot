@@ -27,6 +27,14 @@ class Profile(models.Model):
         verbose_name= 'Продукт для изменения',
         default = 0
     )
+    change_measurement = models.TextField(
+        verbose_name= 'Ед. изм.',
+        default = 0
+    )
+    selected_storage = models.TextField(
+        verbose_name= 'Выбранный склад',
+        default = 0
+    )
     
     def __str__(self):
         return f'Id:{self.external_id}; Роль:{self.role}; Компания:{self.company}'# для более красивого отображения 
@@ -54,7 +62,7 @@ class Company(models.Model):
     )
     
     def __str__(self):
-        return f'{self.name}'# для более красивого отображения 
+        return f'{self.name}'# in order to make django-admin profile good-looking
 
     class Meta:
         verbose_name = 'Компания'
@@ -81,7 +89,7 @@ class Storage(models.Model):
     )
 
     def __str__(self):
-        return f'{self.name}'# для более красивого отображения 
+        return f'{self.name}'
     
     class Meta:
         verbose_name = 'Склад'
@@ -94,7 +102,7 @@ class Category(models.Model):
     )
 
     def __str__(self):
-        return f'{self.name}'# для более красивого отображения 
+        return f'{self.name}'
     
     class Meta:
         verbose_name = 'Категория'
@@ -102,15 +110,11 @@ class Category(models.Model):
 
 # Модель для товаров
 class Product(models.Model):
-    company = models.ForeignKey(
-        to='ugc.Company',
+    company = models.TextField(
         verbose_name='Компания',
-        on_delete = models.PROTECT,
     )
-    storage = models.ForeignKey(
-        to='ugc.Storage',
+    storage = models.TextField(
         verbose_name='Склад',
-        on_delete = models.PROTECT,
     )
     category = models.ForeignKey(
         to='ugc.Category',
@@ -128,7 +132,7 @@ class Product(models.Model):
     )
 
     def __str__(self):
-        return f'{self.name}'# для более красивого отображения 
+        return f'{self.name}'
     
     class Meta:
         verbose_name = 'Товар'
@@ -136,15 +140,12 @@ class Product(models.Model):
 
 # Модель для заявок
 class Applications(models.Model):
-    company = models.ForeignKey(
-        to='ugc.Company',
+    company = models.TextField(
         verbose_name='Компания',
-        on_delete = models.PROTECT,
     )
-    storage = models.ForeignKey(
-        to='ugc.Storage',
+    storage = models.TextField(
         verbose_name='Склад',
-        on_delete= models.PROTECT,
+        default='sample'
     )
     product = models.TextField(
         verbose_name='Товар',
@@ -179,8 +180,8 @@ def applications_handler(sender, instance: Applications, **kwargs):
             #Проверяет достаточно ли значение для тогро, чтобы его изменить 
         
             if((0 > application.amount and abs(application.amount) <= amount_value) or (application.amount > 0)):
-                Product.objects.filter(name = application.product, company = application.company, storage = application.storage).update(amount = (amount_value + application.amount))
-                Applications.objects.filter(company = application.company, product = application.product, storage = application.storage).update(status = 'Done!')
+                Product.objects.filter(name = application.product, company = str(application.company), storage = str(application.storage)).update(amount = (amount_value + application.amount))
+                Applications.objects.filter(company = str(application.company), product = application.product, storage = str(application.storage)).update(status = 'Done!')
                 bot.send_message(chat_id = application.user_id, text =  f'Your application for changing {application.product} to {application.amount} was accepted!')
             else:
                 Applications.objects.filter(company = application.company, product = application.product, storage = application.storage).update(status = 'Denied')

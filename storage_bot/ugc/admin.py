@@ -31,7 +31,7 @@ class ProfileAdmin(admin.ModelAdmin):
 
 @admin.register(Applications)
 class ProfileAdmin(admin.ModelAdmin):
-    list_display = ('company', 'storage', 'product', 'amount', 'status')
+    list_display = ('id','company', 'storage', 'product', 'amount', 'status')
     form = StatusForm
 
     def save_model(self, request, obj, form, change):

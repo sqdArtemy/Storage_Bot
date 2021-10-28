@@ -1,6 +1,8 @@
 from os import name
 from re import U
 
+from telegram import choseninlineresult
+
 from storage_bot.settings import TOKEN
 from telegram.ext import *
 from telegram import *
@@ -8,16 +10,16 @@ from telegram import *
 from django.core.management.base import BaseCommand
 from ugc.models import Applications, Profile, Company, Storage, Category, Product
 
-# Пресеты кнопок
-button_companies = 'Companies'
-button_storages = 'Storages'
-button_categories  = 'Categories'
-button_products = 'Products'
-button_info_c = 'Info about Comapany'
-button_info_s = 'Info about Storage'
-button_back = 'Back'
+# buttons presets
+button_companies = 'Companies 🏢'
+button_storages = 'Storages🏗️'
+button_categories  = 'Categories📑'
+button_products = 'Products 📦'
+button_info_c = 'Info about Comapany 💡'
+button_info_s = 'Info about Storage 💡'
+button_back = 'Back 🔙'
 
-# Кнопки изменения количества
+# buttons for changing quantity
 BTN_PLUS = "callback+"
 BTN_MINUS = "callback-"
 BTN_PROD = "empty_callback"
@@ -25,9 +27,34 @@ BTN_SEND = "send_request"
 
 user_roles = ['Admin', 'Lab', 'S-Manager']
 
+#getting current user`s id
 def get_id(update: Update):
     chat_id = update.effective_message.chat_id
     return chat_id
+
+# getting needed item from database
+def get_item(update: Update, id, item):
+    user = Profile.objects.filter(external_id = id).get()
+    field_object = Profile._meta.get_field(str(item))
+    choosen_item = getattr(user, field_object.attname)
+    
+    if item == 'company':
+        obj = Company
+    elif item == 'selected_storage':
+        obj = Storage
+    elif item == 'change_prod':
+        obj = Product
+    else:
+        return choosen_item
+
+    #for cases, when we need to take info about particular company or storage
+    #because in that case you need an obj, not a string
+    db_objects = obj.objects.all()
+    for itm in db_objects:
+        if choosen_item == itm.name:
+            choosen_item = itm
+
+    return choosen_item
 
 # Отображает кнопочное меню в зависимоти от выбора категории
 def menu(update: Update, comp, m_type):
@@ -70,28 +97,23 @@ def selection(update: Update, b_type):
     buttons = []
     chat_id = get_id(update)
 
-    #Gets user`s company
-    user = Profile.objects.filter(external_id = chat_id).get()
-    comp_obj = Profile._meta.get_field('company')
-    user_comp = getattr(user, comp_obj.attname)
-
     # Собирает всю информацию со всех едениц, опять же, зависит от того, какую категорию мы выбираем
     items_db = b_type.objects.all()
 
     # Проверяет принадлежит ли единица к выбранной компании
     if b_type == Storage:
         for item in items_db:
-            if company_id == item.company:
+            if str(get_item(update, get_id(update), 'company')) == str(item.company):
                 buttons.append(KeyboardButton(text = item.name))
 
     elif b_type == Product:
         for item in items_db:
-            if company_id == item.company and storage_id == item.storage and categ_id == item.category:
+            if str(get_item(update, get_id(update), 'company')) == str(item.company) and str(get_item(update, get_id(update), 'selected_storage')) == str(item.storage) and categ_id == item.category:
                 buttons.append(KeyboardButton(text = item.name))
 
     elif b_type == Company:
         for item in items_db:
-            if  item.name == user_comp:
+            if str(item.name) == str(get_item(update, get_id(update), 'company')):
                 buttons.append(KeyboardButton(text = item.name))
     else:
         for item in items_db:
@@ -113,8 +135,9 @@ def selection(update: Update, b_type):
 # Выводит информацию о предприятии
 def info_about(update: Update, inf):
     if inf == Company:
+        comp = get_item(update, get_id(update), 'company')
         update.message.reply_text(
-            text = f"Name: {company_id.name} \n Region: {company_id.region} \n City: {company_id.city} \n Address: {company_id.adress} \n Phone: +{company_id.phone}",
+            text = f"Name: {comp.name} \n Region: {comp.region} \n City: {comp.city} \n Address: {comp.adress} \n Phone: +{comp.phone}",
             reply_markup = ReplyKeyboardMarkup(
                 keyboard = [
                     [
@@ -125,9 +148,10 @@ def info_about(update: Update, inf):
             )
         )
     elif inf == Storage:
+        storage = get_item(update, get_id(update), 'selected_storage')
         chat_id = update.effective_message.chat_id
         update.message.reply_text(
-            text = f"Name: {storage_id.name} \n Address: {storage_id.adress} \n Location:",
+            text = f"Name: {storage.name} \n Address: {storage.adress} \n Location:",
             reply_markup = ReplyKeyboardMarkup(
                 keyboard = [
                     [
@@ -137,19 +161,22 @@ def info_about(update: Update, inf):
                 resize_keyboard=True
             )
         )
-        #Отправляет локацию склада
-        bot.send_location(chat_id = chat_id ,latitude = storage_id.latitude, longitude = storage_id.longitude)
+        #Sends storage`s location
+        bot.send_location(chat_id = chat_id ,latitude = storage.latitude, longitude = storage.longitude)
         
 
 
 # Создание инлайн клавиатуры в отдельной функции, чтобы потом навесить её на любое сообщение
-def base_inline_keyboard():
+def base_inline_keyboard(update: Update):
+    storage = get_item(update, get_id(update), 'selected_storage')
+    product = get_item(update, get_id(update), 'change_prod')
+    company = get_item(update, get_id(update), 'company')
 
     products_db = Product.objects.all()
-    for product in products_db:
-        if product.name == prod_id.name and product.company == company_id and product.storage == storage_id:
+    for item in products_db:
+        if item.name == product.name and str(item.company) == str(company) and str(item.storage) == str(storage):
             BTNS={
-                BTN_PROD: f'{product.amount} available',
+                BTN_PROD: f'{item.amount} available',
                 BTN_PLUS: "+",
                 BTN_MINUS: "-",
                 BTN_SEND: "Send",
@@ -173,7 +200,7 @@ def base_inline_keyboard():
 def product_adjustments(update, prod):
     update.message.reply_text(
         text = f'{prod.name} ({prod.measurement})',
-        reply_markup = base_inline_keyboard()
+        reply_markup = base_inline_keyboard(update)
     )
 
 # Обработка всех инлайн кнопок 
@@ -182,6 +209,7 @@ def keyboard_callback_handler(update: Update, context: CallbackContext):
     chat_id = update.effective_message.chat_id
     query = update.callback_query
     data = query.data
+    product = get_item(update, get_id(update), 'change_prod')
 
     # Записывает роль юзера для дальнейшей проверки
     profiles_db = Profile.objects.filter(external_id = chat_id)
@@ -197,13 +225,6 @@ def keyboard_callback_handler(update: Update, context: CallbackContext):
 
         return user_change
 
-    def user_change_prod():
-        profiles_db = Profile.objects.filter(external_id = chat_id)
-        for item in profiles_db:
-            prod_change = str(item.change_prod)
-
-        return prod_change
-
     def changes_to(value, way):
         if way == 'change':
             Profile.objects.filter(external_id = user_id).update(change_amount = (float(user_change_amount())+float(value)))
@@ -212,22 +233,22 @@ def keyboard_callback_handler(update: Update, context: CallbackContext):
 
     def message_change():
          query.edit_message_text(
-                text=f'You want to change {user_change_prod()} by ({user_change_amount()} {prod_id.measurement})',
-                reply_markup=base_inline_keyboard(),
+                text=f'You want to change {str(get_item(update, get_id(update), "change_prod"))} by ({user_change_amount()} {product.measurement})',
+                reply_markup=base_inline_keyboard(update),
                 )
     
     def callback_warn():
         query.answer('You don`t have permission.\n(Inappropriate role/Not your company`s storage)', True)
 
     if data == BTN_PLUS:
-        if (user_role == user_roles[0] or user_role == user_roles[2]) and str(user_company) == str(company_id):
+        if (user_role == user_roles[0] or user_role == user_roles[2]) and str(user_company) == str(get_item(update, get_id(update), 'company')):
             changes_to(1, 'change')
             message_change()
         else:
             callback_warn()
 
     if data == BTN_MINUS:
-        if (user_role == user_roles[0] or user_role == user_roles[1]) and str(user_company) == str(company_id):
+        if (user_role == user_roles[0] or user_role == user_roles[1]) and str(user_company) == str(get_item(update, get_id(update), 'company')):
             changes_to(-1, 'change')
             message_change()
         else: 
@@ -236,9 +257,9 @@ def keyboard_callback_handler(update: Update, context: CallbackContext):
     if data == BTN_SEND:
         a, _ = Applications.objects.get_or_create(
             user_id = chat_id,
-            company = company_id,
-            storage = storage_id,
-            product = user_change_prod(),
+            company = get_item(update, get_id(update), 'company'),
+            storage = get_item(update, get_id(update), 'selected_storage'),
+            product = product,
             amount = user_change_amount(),
             status = 'Waiting'
             )
@@ -281,18 +302,13 @@ def message_handler(update: Update, context: CallbackContext):
     companies_db = Company.objects.all()
     for company in companies_db:
         if text == company.name:
-            global company_id
-            company_id = company
-
             return menu(update = update, comp = company, m_type = 'companies')
 
     storages_db = Storage.objects.all()
     for storage in storages_db:
         if text == storage.name:
-            global storage_id
-            storage_id = storage
-
-            return menu(update = update, comp = storage, m_type = 'storages')
+            Profile.objects.filter(external_id = get_id(update)).update(selected_storage = str(storage))
+            return menu(update = update, comp = get_item(update, get_id(update), 'selected_storage'), m_type = 'storages')
 
     categories_db = Category.objects.all()
     for category in categories_db:
@@ -305,8 +321,6 @@ def message_handler(update: Update, context: CallbackContext):
     products_db = Product.objects.all()
     for product in products_db:
         if text == product.name:
-            global prod_id
-            prod_id = product
             Profile.objects.filter(external_id = get_id(update)).update(change_prod = str(product))
 
             return product_adjustments(update, product)
@@ -321,7 +335,7 @@ def message_handler(update: Update, context: CallbackContext):
     )
 
     update.message.reply_text(
-        text = 'Hello there, choose company:',
+        text = 'Hello there 👋, choose company:',
         reply_markup = reply_markup,
     )
 
@@ -346,4 +360,3 @@ class Command(BaseCommand):
 
         updater.start_polling()
         updater.idle()
-

@@ -13,12 +13,16 @@ class ProfileForm(forms.ModelForm):
             'role',
             'company',
             'change_amount',
-            'change_prod'
+            'change_prod',
+            'change_measurement',
+            'selected_storage',
         )
         widgets = {
             'role': forms.TextInput,
             'company': forms.TextInput,
             'change_prod': forms.TextInput,
+            'selected_storage': forms.TextInput,
+            'change_measurement': forms.TextInput,
         }
 
 class CompanyForm(forms.ModelForm):
@@ -81,6 +85,8 @@ class ProductForm(forms.ModelForm):
         widgets = {
             'name': forms.TextInput,
             'measurement': forms.TextInput,
+            'company': forms.TextInput,
+            'storage': forms.TextInput,
         }
 
 class StatusForm(forms.ModelForm):
@@ -97,8 +103,10 @@ class StatusForm(forms.ModelForm):
 
         )
         widgets ={
-            'status': forms.TextInput,
             'product': forms.TextInput,
+            'company': forms.TextInput,
+            'storage': forms.TextInput,
+            'status': forms.TextInput,
         }
     
     statuses = [('Accepted','Accepted'), ('Denied','Denied'), ('Waiting','Waiting'), ('Done!','Done!')]
