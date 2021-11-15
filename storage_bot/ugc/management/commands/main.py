@@ -1,12 +1,8 @@
 from os import name
 from re import U
-
-from telegram import choseninlineresult
-
 from storage_bot.settings import TOKEN
 from telegram.ext import *
 from telegram import *
-
 from django.core.management.base import BaseCommand
 from ugc.models import Applications, Profile, Company, Storage, Category, Product
 
@@ -18,12 +14,15 @@ button_products = 'Products 📦'
 button_info_c = 'Info about Comapany 💡'
 button_info_s = 'Info about Storage 💡'
 button_back = 'Back 🔙'
+button_add_p = 'Add product🆕'
 
 # buttons for changing quantity
 BTN_PLUS = "callback+"
 BTN_MINUS = "callback-"
 BTN_PROD = "empty_callback"
 BTN_SEND = "send_request"
+BTN10_PLUS = "10plus",
+BTN10_MINUS = "10minus",
 
 user_roles = ['Admin', 'Lab', 'S-Manager']
 
@@ -44,6 +43,8 @@ def get_item(update: Update, id, item):
         obj = Storage
     elif item == 'change_prod':
         obj = Product
+    elif item == 'selected_category':
+        obj = Category
     else:
         return choosen_item
 
@@ -51,10 +52,33 @@ def get_item(update: Update, id, item):
     #because in that case you need an obj, not a string
     db_objects = obj.objects.all()
     for itm in db_objects:
+        if obj == Category and choosen_item == itm.id:
+            choosen_item = itm
         if choosen_item == itm.name:
             choosen_item = itm
 
     return choosen_item
+
+#Gives information about how to form panel after 'back' button have been pressed #WIP
+def selected_page(update: Update, page):
+    chat_id = get_id(update)
+    user = Profile.objects.filter(external_id = chat_id).get()
+    target = Profile._meta.get_field('current_page')
+    cur_button = getattr(user, target.attname)-1
+
+    if page-1 >= 0:
+        Profile.objects.filter(external_id = chat_id).update(previous_page = page - 1)
+        Profile.objects.filter(external_id = chat_id).update(current_page = page)
+
+        return page - 1
+    else:
+        return 0
+        
+
+#Updates info in DB about current page
+def sp(update: Update, page):
+    chat_id = get_id(update)
+    Profile.objects.filter(external_id = chat_id).update(current_page = page)
 
 # Отображает кнопочное меню в зависимоти от выбора категории
 def menu(update: Update, comp, m_type):
@@ -92,43 +116,46 @@ def menu(update: Update, comp, m_type):
         )
 
 
-# Создаёт определённые кнопки в заивисимости от выбранной категории
+# creates buttons with respect to selected category
 def selection(update: Update, b_type):
     buttons = []
     chat_id = get_id(update)
 
-    # Собирает всю информацию со всех едениц, опять же, зависит от того, какую категорию мы выбираем
+    # collects all info about seected object
     items_db = b_type.objects.all()
 
-    # Проверяет принадлежит ли единица к выбранной компании
+    # checks wheter item belongs to company
     if b_type == Storage:
         for item in items_db:
-            if str(get_item(update, get_id(update), 'company')) == str(item.company):
+            if str(get_item(update, chat_id, 'company')) == str(item.company):
                 buttons.append(KeyboardButton(text = item.name))
 
     elif b_type == Product:
         for item in items_db:
-            if str(get_item(update, get_id(update), 'company')) == str(item.company) and str(get_item(update, get_id(update), 'selected_storage')) == str(item.storage) and categ_id == item.category:
+            if str(get_item(update, chat_id, 'company')) == str(item.company) and str(get_item(update, chat_id, 'selected_storage')) == str(item.storage) and categ_id == item.category:
                 buttons.append(KeyboardButton(text = item.name))
 
     elif b_type == Company:
         for item in items_db:
-            if str(item.name) == str(get_item(update, get_id(update), 'company')):
+            if str(item.name) == str(get_item(update, chat_id, 'company')):
                 buttons.append(KeyboardButton(text = item.name))
     else:
         for item in items_db:
             buttons.append(KeyboardButton(text = item.name))
     
+    # adds additional button if particular type is selected
+    if b_type == Product: 
+        Keyboard=[buttons, [KeyboardButton(text = button_back),KeyboardButton(text = button_add_p),]]
+    
+    else: 
+        Keyboard=[buttons, [KeyboardButton(text = button_back)]]
+
     update.message.reply_text(
-            text = 'List: ',
+            text = 'List 📝 ',
             reply_markup= ReplyKeyboardMarkup(
-                keyboard=[
-                    buttons,
-                    [
-                        KeyboardButton(text = button_back),
-                    ]    
-                ],
-                resize_keyboard= True
+                keyboard=Keyboard,
+                resize_keyboard=True,
+                one_time_keyboard=True
             )  
         )
 
@@ -140,9 +167,7 @@ def info_about(update: Update, inf):
             text = f"Name: {comp.name} \n Region: {comp.region} \n City: {comp.city} \n Address: {comp.adress} \n Phone: +{comp.phone}",
             reply_markup = ReplyKeyboardMarkup(
                 keyboard = [
-                    [
-                        KeyboardButton(text = button_back),
-                    ],
+                    [KeyboardButton(text = button_back),],
                 ],
                 resize_keyboard= True
             )
@@ -166,41 +191,60 @@ def info_about(update: Update, inf):
         
 
 
-# Создание инлайн клавиатуры в отдельной функции, чтобы потом навесить её на любое сообщение
-def base_inline_keyboard(update: Update):
+#inline keyboard for changing amount of prduct
+def base_inline_keyboard(update: Update, type_p):
     storage = get_item(update, get_id(update), 'selected_storage')
     product = get_item(update, get_id(update), 'change_prod')
     company = get_item(update, get_id(update), 'company')
 
-    products_db = Product.objects.all()
-    for item in products_db:
-        if item.name == product.name and str(item.company) == str(company) and str(item.storage) == str(storage):
-            BTNS={
-                BTN_PROD: f'{item.amount} available',
-                BTN_PLUS: "+",
-                BTN_MINUS: "-",
-                BTN_SEND: "Send",
+    if type_p == 'change':
+        products_db = Product.objects.all()
+        for item in products_db:
+            if item.name == product.name and str(item.company) == str(company) and str(item.storage) == str(storage):
+                BTNS={
+                    BTN_PROD: f'{item.amount} available',
+                    BTN_PLUS: "➕",
+                    BTN_MINUS: "➖",
+                    BTN_SEND: "Send➡️",
+                    BTN10_PLUS: "10➕",
+                    BTN10_MINUS: "10➖",
+                }
+
+                keyboard = [
+                    [InlineKeyboardButton(BTNS[BTN_PROD], callback_data= BTN_PROD),],
+                    [
+                        InlineKeyboardButton(BTNS[BTN_PLUS], callback_data = BTN_PLUS),
+                        InlineKeyboardButton(BTNS[BTN_MINUS], callback_data = BTN_MINUS),
+                    ],
+                    [InlineKeyboardButton(BTNS[BTN_SEND], callback_data = BTN_SEND),]
+                ]
+    elif type_p == 'create':
+            BTNS = {
+                BTN_PLUS: "➕",
+                BTN_MINUS: "➖",
+                BTN_SEND: "Send➡️",
+                BTN10_PLUS: "10➕",
+                BTN10_MINUS: "10➖",
             }
-   
-    keyboard = [
-        [
-            InlineKeyboardButton(BTNS[BTN_PROD], callback_data= BTN_PROD),
-        ],
-        [
-            InlineKeyboardButton(BTNS[BTN_PLUS], callback_data = BTN_PLUS),
-            InlineKeyboardButton(BTNS[BTN_MINUS], callback_data = BTN_MINUS),
-        ],
-        [
-            InlineKeyboardButton(BTNS[BTN_SEND], callback_data = BTN_SEND),
-        ]
-    ]
+
+            keyboard = [
+                [
+                    InlineKeyboardButton(BTNS[BTN10_PLUS], callback_data= 'set+10'),
+                    InlineKeyboardButton(BTNS[BTN_PLUS], callback_data = "set+1"),
+                    InlineKeyboardButton(BTNS[BTN_MINUS], callback_data = "set-1"),
+                    InlineKeyboardButton(BTNS[BTN10_MINUS], callback_data= 'set-10'),
+                ],
+                [InlineKeyboardButton(BTNS[BTN_SEND], callback_data = 'send'),]
+            ]
+
     return InlineKeyboardMarkup(keyboard)
+
 
 # Вывод меню изменения количества товара
 def product_adjustments(update, prod):
     update.message.reply_text(
         text = f'{prod.name} ({prod.measurement})',
-        reply_markup = base_inline_keyboard(update)
+        reply_markup = base_inline_keyboard(update,'change')
     )
 
 # Обработка всех инлайн кнопок 
@@ -234,9 +278,15 @@ def keyboard_callback_handler(update: Update, context: CallbackContext):
     def message_change():
          query.edit_message_text(
                 text=f'You want to change {str(get_item(update, get_id(update), "change_prod"))} by ({user_change_amount()} {product.measurement})',
-                reply_markup=base_inline_keyboard(update),
+                reply_markup=base_inline_keyboard(update,'change'),
                 )
     
+    def message_add():
+        query.edit_message_text(
+            text = f'Entered amount:  {get_item(update, get_id(update), "change_amount")} 📝',
+            reply_markup= base_inline_keyboard(update, 'create')
+        )
+
     def callback_warn():
         query.answer('You don`t have permission.\n(Inappropriate role/Not your company`s storage)', True)
 
@@ -268,36 +318,137 @@ def keyboard_callback_handler(update: Update, context: CallbackContext):
             text = f'Application sent!',
         )
         
-        #Обнуляем счётчит количества
+        # sets g page to the initial condition
+        Profile.objects.filter(external_id = chat_id).update(previous_page = 0,current_page = 0)
+
+        # sets counter to 0
         changes_to(0,'set_0')
+
+    if data == 'set+10':
+        changes_to(10, 'change')
+        message_add()
+
+    if data == 'set-10':
+        changes_to(-10, 'change')
+        message_add()
+
+    if data == 'set+1':
+        changes_to(1, 'change')
+        message_add()
+
+    if data == 'set-1':
+        changes_to(-1, 'change')
+        message_add()
+    
+    if data == 'send':  
+        name = get_item(update, chat_id, 'create_name')
+        comp = get_item(update, chat_id, 'company').name
+        stor = get_item(update, chat_id, 'selected_storage').name
+        change_amount = get_item(update, chat_id, 'change_amount')
+
+        Product.objects.filter(name = name, storage = stor, company = comp).update(amount = change_amount)
+        query.edit_message_text(text='Changes saved!✅')
+        Profile.objects.filter(external_id = chat_id).update(change_amount = 0)
+
     else:
         pass
 
-# Проверяет все сообщения от пользователя
+#create new product
+def create_prod(update: Update):
+    chat_id = get_id(update)
+    prod_name = get_item(update, chat_id, 'create_name')
+    p, _ = Product.objects.get_or_create(
+        company = get_item(update, chat_id, 'company'),
+        storage = get_item(update, chat_id, 'selected_storage'),
+        category = get_item(update, chat_id, 'selected_category'),
+        name = prod_name,
+        measurement = get_item(update, chat_id, 'change_measurement'),
+        amount = 0)
+
+    update.message.reply_text(
+        text = f'You have added new product: {prod_name}! Now enter quantity',
+        reply_markup= base_inline_keyboard(update, 'create')
+        )
+
+    Profile.objects.filter(external_id = chat_id).update(state = 'default')
+
+# handles all messages from the user
 def message_handler(update: Update, context: CallbackContext):
     text = update.message.text
     chat_id = update.message.chat_id
+    reply_markup = ReplyKeyboardMarkup(
+        keyboard=[
+            [
+                KeyboardButton(text = button_companies),
+            ],
+        ],
+        resize_keyboard = True        
+    )
 
-    # Добавляет юзеров в профиль
+
+    # adds users to profile
     p, _ = Profile.objects.get_or_create(
         external_id = chat_id,
     )
     
-    # Проверяет были ли введены ключевые слова
+    # cheks for keywords
     if text == button_companies:
+        selected_page(update, 1)
         return selection(update, Company)
 
     elif text == button_storages:
+        selected_page(update, 3)
         return selection(update, Storage)
 
+    elif text == button_categories:
+        selected_page(update, 5)
+        return selection(update, Category)
+
     elif text == button_info_s:
-        return info_about(update = update, inf = Storage)
+        selected_page(update, 4)
+        return info_about(update=update, inf = Storage)
 
     elif text == button_info_c:
-        return info_about(update = update, inf = Company)
+        selected_page(update, 2)
+        return info_about(update=update, inf = Company)
     
-    elif text == button_categories:
-        return selection(update, Category)
+    # if user wants to create new item - ask name of it 
+    if text == button_add_p:
+        update.message.reply_text(
+            text = 'Please, enter products name: ',
+        )
+        Profile.objects.filter(external_id = get_id(update)).update(state = 'prod_name')
+
+    #assign name and ask measurement
+    elif get_item(update, chat_id, 'state')  == 'prod_name':
+        Profile.objects.filter(external_id = chat_id).update(create_name = update.message.text)
+        Profile.objects.filter(external_id = chat_id).update(state = 'prod_measure')
+
+        update.message.reply_text(
+            text = 'Please, enter products measurement: ',
+        )
+
+    #then writes the measurement and add it to database
+    elif get_item(update, chat_id, 'state')  == 'prod_measure':
+        Profile.objects.filter(external_id = chat_id).update(change_measurement = update.message.text)
+        Profile.objects.filter(external_id = chat_id).update(state = 'default')
+        create_prod(update)
+
+
+    elif text == button_back:
+        # page = selected_page(update, get_item(update, chat_id, 'current_page'))
+        # if page == 1:
+        #     return selection(update, Company)
+        # elif page == 3:
+        #     return selection(update, Storage)
+        # elif page == 5:
+        #     return selection(update, Category)
+        # else:
+        update.message.reply_text(
+            text = 'Hello there 👋, choose company:',
+            reply_markup = reply_markup,
+        )
+        # return 0
  
     companies_db = Company.objects.all()
     for company in companies_db:
@@ -315,6 +466,7 @@ def message_handler(update: Update, context: CallbackContext):
         if text == category.name:
             global categ_id
             categ_id = category
+            Profile.objects.filter(external_id = chat_id).update(selected_category = category)
 
             return selection(update, Product)
 
@@ -325,6 +477,9 @@ def message_handler(update: Update, context: CallbackContext):
 
             return product_adjustments(update, product)
 
+    Profile.objects.filter(external_id = get_id(update)).update(change_amount = 0)
+
+def start(update: Update, context):
     reply_markup = ReplyKeyboardMarkup(
         keyboard=[
             [
@@ -333,13 +488,10 @@ def message_handler(update: Update, context: CallbackContext):
         ],
         resize_keyboard = True        
     )
-
     update.message.reply_text(
         text = 'Hello there 👋, choose company:',
         reply_markup = reply_markup,
     )
-
-    Profile.objects.filter(external_id = get_id(update)).update(change_amount = 0)
 
 # Связь с джанго через команду
 class Command(BaseCommand):
@@ -351,6 +503,7 @@ class Command(BaseCommand):
             token = TOKEN,
             use_context = True,
         )
+        global bot
         bot = Bot(
             token = TOKEN,
         )

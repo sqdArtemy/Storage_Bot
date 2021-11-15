@@ -6,7 +6,7 @@ from .models import Applications, Category, Product, Profile, Company, Storage
 # Регистрация объектов в админке джанго
 @admin.register(Profile)
 class ProfileAdmin(admin.ModelAdmin):
-    list_display = ('id', 'external_id', 'role', 'company',)
+    list_display = ('id', 'external_id', 'role', 'company', 'current_page','previous_page', 'create_name', 'state', 'selected_category')
     form = ProfileForm
 
 @admin.register(Company)
@@ -31,7 +31,7 @@ class ProfileAdmin(admin.ModelAdmin):
 
 @admin.register(Applications)
 class ProfileAdmin(admin.ModelAdmin):
-    list_display = ('id','company', 'storage', 'product', 'amount', 'status')
+    list_display = ('id','company', 'storage', 'product', 'amount', 'status', 'reason')
     form = StatusForm
 
     def save_model(self, request, obj, form, change):

@@ -16,6 +16,9 @@ Including another URLconf
 from django.contrib import admin
 from django.urls import path
 
+from ugc.views import Test
+
 urlpatterns = [
     path('admin/', admin.site.urls),
+    path('storage/',Test.as_view())
 ]

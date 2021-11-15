@@ -1,8 +1,8 @@
 from django.db import models
+from django.db.models.deletion import PROTECT
 from django.db.models.signals import post_save
 from django.dispatch import receiver
 from telegram import Bot
-from telegram.update import Update
 from storage_bot.settings import TOKEN
 
 bot = Bot(token= TOKEN)
@@ -27,6 +27,10 @@ class Profile(models.Model):
         verbose_name= 'Продукт для изменения',
         default = 0
     )
+    selected_category = models.ForeignKey(
+        'Category',
+        on_delete=PROTECT
+    )
     change_measurement = models.TextField(
         verbose_name= 'Ед. изм.',
         default = 0
@@ -34,6 +38,21 @@ class Profile(models.Model):
     selected_storage = models.TextField(
         verbose_name= 'Выбранный склад',
         default = 0
+    )
+    current_page = models.IntegerField(
+        verbose_name= 'Действующая страница',
+        default = 0,
+    )
+    previous_page = models.IntegerField(
+        verbose_name= 'Предыдущая страница',
+        default = 0,
+    )
+    state = models.TextField(
+        verbose_name = 'State of addition'
+    )
+    create_name = models.TextField(
+        verbose_name= 'Name of new product',
+        default= 0
     )
     
     def __str__(self):
@@ -157,34 +176,37 @@ class Applications(models.Model):
         verbose_name = 'ID пользователя',
     )
     status = models.TextField(
-        verbose_name = 'Статус',
+        verbose_name = 'Status',
+    )
+    reason = models.TextField(
+        verbose_name='Reason of denying',
+        default=0
     )
     class Meta:
         verbose_name = 'Заявка',
         verbose_name_plural = 'Заявки'
 
-
-# Функция которая проверяетс статус заявок 
+# this funcion detects if application status was changed
 @receiver(post_save, sender = Applications)
 def applications_handler(sender, instance: Applications, **kwargs):
-    #Проверяет статус заявок и если она принята, то запрос в заявке вступает в силy
-    applications_db = Applications.objects.all()
-    for application in applications_db:
-        if str(application.status) == 'Accepted':
+    # cheks status of applications
+    application = instance
+    if str(application.status) == 'Accepted':
 
-            #Получает актуальное значение количества товара из БД
-            obj = Product.objects.filter(name = application.product, company = application.company, storage = application.storage).get()
-            field_object = Product._meta.get_field('amount')
-            amount_value = getattr(obj, field_object.attname)
+        # recieves actual infirmation about amount of product in the storage
+        obj = Product.objects.filter(name = application.product, company = application.company, storage = application.storage).get()
+        field_object = Product._meta.get_field('amount')
+        amount_value = getattr(obj, field_object.attname)
                     
-            #Проверяет достаточно ли значение для тогро, чтобы его изменить 
+        # checks whether amount of product is enough to change
         
-            if((0 > application.amount and abs(application.amount) <= amount_value) or (application.amount > 0)):
-                Product.objects.filter(name = application.product, company = str(application.company), storage = str(application.storage)).update(amount = (amount_value + application.amount))
-                Applications.objects.filter(company = str(application.company), product = application.product, storage = str(application.storage)).update(status = 'Done!')
-                bot.send_message(chat_id = application.user_id, text =  f'Your application for changing {application.product} to {application.amount} was accepted!')
-            else:
-                Applications.objects.filter(company = application.company, product = application.product, storage = application.storage).update(status = 'Denied')
-                
+        if((0 > application.amount and abs(application.amount) <= amount_value) or (application.amount > 0)):
+            Product.objects.filter(name = application.product, company = str(application.company), storage = str(application.storage)).update(amount = (amount_value + application.amount))
+            Applications.objects.filter(company = str(application.company), product = application.product, storage = str(application.storage)).update(status = 'Done!')
+            bot.send_message(chat_id = application.user_id, text =  f'✅Your application for changing {application.product} to {application.amount} was accepted!✅')
         else:
-            pass
+            Applications.objects.filter(company = application.company, product = application.product, storage = application.storage).update(status = 'Denied')
+
+    elif str(application.status) == 'Denied':
+        bot.send_message(chat_id = application.user_id, text =  f'❌Your application for changing {application.product} to {application.amount} was denied! ❌\nReason:  {application.reason}')
+        Applications.objects.filter(company = str(application.company), product = application.product, storage = str(application.storage)).update(status = 'Done!')

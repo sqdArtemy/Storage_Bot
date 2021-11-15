@@ -16,6 +16,9 @@ class ProfileForm(forms.ModelForm):
             'change_prod',
             'change_measurement',
             'selected_storage',
+            'current_page',
+            'previous_page',
+            'selected_category'
         )
         widgets = {
             'role': forms.TextInput,
@@ -100,6 +103,7 @@ class StatusForm(forms.ModelForm):
             'amount',
             'user_id',
             'status',
+            'reason'
 
         )
         widgets ={
