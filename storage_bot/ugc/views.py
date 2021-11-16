@@ -2,6 +2,7 @@ from telegram import *
 from telegram.bot import Bot
 from telegram.ext.callbackqueryhandler import CallbackQueryHandler
 from telegram.ext.commandhandler import CommandHandler
+from telegram.ext.conversationhandler import ConversationHandler
 from telegram.ext.dispatcher import Dispatcher
 import os
 from telegram.ext.filters import Filters
@@ -24,7 +25,7 @@ class Test(APIView):
         dispatcher = Dispatcher(bot, None, workers=6)
 
         #THIS WHOLE THING FOR SETTING WEBHOOK
-        # url = "https://6dcc-213-230-127-84.ngrok.io/"
+        # url = "https://cf1b-213-230-127-84.ngrok.io/" #web-app link
 
         # bot.setWebhook(url + 'storage/')
 

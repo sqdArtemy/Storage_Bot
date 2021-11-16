@@ -2,12 +2,15 @@ from django.db import models
 from django.db.models.deletion import PROTECT
 from django.db.models.signals import post_save
 from django.dispatch import receiver
-from telegram import Bot
+from telegram import Bot, chat, replymarkup
+from telegram.inline.inlinekeyboardbutton import InlineKeyboardButton
+from telegram.inline.inlinekeyboardmarkup import InlineKeyboardMarkup
+from telegram.keyboardbuttonpolltype import KeyboardButtonPollType
 from storage_bot.settings import TOKEN
 
 bot = Bot(token= TOKEN)
 
-# Модель для профиля пользователя 
+# model for user`s profile
 class Profile(models.Model):
     external_id = models.PositiveIntegerField(
         verbose_name = 'ID пользователя',
@@ -48,7 +51,7 @@ class Profile(models.Model):
         default = 0,
     )
     state = models.TextField(
-        verbose_name = 'State of addition'
+        verbose_name = 'State: '
     )
     create_name = models.TextField(
         verbose_name= 'Name of new product',
@@ -186,11 +189,40 @@ class Applications(models.Model):
         verbose_name = 'Заявка',
         verbose_name_plural = 'Заявки'
 
+class Application_callback(models.Model):
+    app_id = models.PositiveBigIntegerField(
+        verbose_name='Application status'
+    )
+
 # this funcion detects if application status was changed
 @receiver(post_save, sender = Applications)
 def applications_handler(sender, instance: Applications, **kwargs):
-    # cheks status of applications
     application = instance
+
+    if application.status == 'Waiting':
+    # inline keyboard for receiving applications
+        def application_inline():
+            BTN_YES = "ACC" 
+            BTN_NO = "DIS"
+            BTNS = {
+                BTN_YES: "Accept👍",
+                BTN_NO: "Discard👎"
+            }
+            
+            keyboard = [
+                [
+                InlineKeyboardButton(BTNS[BTN_YES], callback_data=f"YES-{application.id}"),
+                InlineKeyboardButton(BTNS[BTN_NO], callback_data=f"NO-{application.id}")
+                ]
+            ]
+
+            return InlineKeyboardMarkup(keyboard)
+
+        users = Profile.objects.all()
+        for user in users:
+            if str(user.role) == 'Admin' and str(user.company) == str(application.company):
+                bot.send_message(chat_id = user.external_id, text = f'Incoming application for changing {application.product} to {application.amount} in storage {application.storage}!',reply_markup = application_inline())
+
     if str(application.status) == 'Accepted':
 
         # recieves actual infirmation about amount of product in the storage
@@ -199,14 +231,13 @@ def applications_handler(sender, instance: Applications, **kwargs):
         amount_value = getattr(obj, field_object.attname)
                     
         # checks whether amount of product is enough to change
-        
         if((0 > application.amount and abs(application.amount) <= amount_value) or (application.amount > 0)):
             Product.objects.filter(name = application.product, company = str(application.company), storage = str(application.storage)).update(amount = (amount_value + application.amount))
-            Applications.objects.filter(company = str(application.company), product = application.product, storage = str(application.storage)).update(status = 'Done!')
+            Applications.objects.filter(user_id = application.user_id ,company = str(application.company), product = application.product, storage = str(application.storage)).update(status = 'Done!')
             bot.send_message(chat_id = application.user_id, text =  f'✅Your application for changing {application.product} to {application.amount} was accepted!✅')
         else:
             Applications.objects.filter(company = application.company, product = application.product, storage = application.storage).update(status = 'Denied')
 
     elif str(application.status) == 'Denied':
-        bot.send_message(chat_id = application.user_id, text =  f'❌Your application for changing {application.product} to {application.amount} was denied! ❌\nReason:  {application.reason}')
+        bot.send_message(chat_id = application.user_id, text =  f'❌Your application for changing {application.product} to {application.amount} was denied! ❌')
         Applications.objects.filter(company = str(application.company), product = application.product, storage = str(application.storage)).update(status = 'Done!')

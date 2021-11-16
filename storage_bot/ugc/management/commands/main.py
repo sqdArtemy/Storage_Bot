@@ -1,5 +1,6 @@
 from os import name
 from re import U
+from django.db.models import query
 from storage_bot.settings import TOKEN
 from telegram.ext import *
 from telegram import *
@@ -48,7 +49,7 @@ def get_item(update: Update, id, item):
     else:
         return choosen_item
 
-    #for cases, when we need to take info about particular company or storage
+    # for cases, when we need to take info about particular company or storage
     #because in that case you need an obj, not a string
     db_objects = obj.objects.all()
     for itm in db_objects:
@@ -59,7 +60,7 @@ def get_item(update: Update, id, item):
 
     return choosen_item
 
-#Gives information about how to form panel after 'back' button have been pressed #WIP
+# gives information about how to form panel after 'back' button have been pressed #WIP
 def selected_page(update: Update, page):
     chat_id = get_id(update)
     user = Profile.objects.filter(external_id = chat_id).get()
@@ -75,12 +76,12 @@ def selected_page(update: Update, page):
         return 0
         
 
-#Updates info in DB about current page
+# updates info in DB about current page
 def sp(update: Update, page):
     chat_id = get_id(update)
     Profile.objects.filter(external_id = chat_id).update(current_page = page)
 
-# Отображает кнопочное меню в зависимоти от выбора категории
+# displays button menu in ralation with selected category
 def menu(update: Update, comp, m_type):
     if m_type == 'companies':
         update.message.reply_text(
@@ -159,7 +160,7 @@ def selection(update: Update, b_type):
             )  
         )
 
-# Выводит информацию о предприятии
+# displays info about company or storage
 def info_about(update: Update, inf):
     if inf == Company:
         comp = get_item(update, get_id(update), 'company')
@@ -173,6 +174,7 @@ def info_about(update: Update, inf):
             )
         )
     elif inf == Storage:
+        bot = Bot(token = TOKEN)
         storage = get_item(update, get_id(update), 'selected_storage')
         chat_id = update.effective_message.chat_id
         update.message.reply_text(
@@ -191,7 +193,7 @@ def info_about(update: Update, inf):
         
 
 
-#inline keyboard for changing amount of prduct
+# inline keyboard for changing amount of prduct
 def base_inline_keyboard(update: Update, type_p):
     storage = get_item(update, get_id(update), 'selected_storage')
     product = get_item(update, get_id(update), 'change_prod')
@@ -291,7 +293,7 @@ def keyboard_callback_handler(update: Update, context: CallbackContext):
         query.answer('You don`t have permission.\n(Inappropriate role/Not your company`s storage)', True)
 
     if data == BTN_PLUS:
-        if (user_role == user_roles[0] or user_role == user_roles[2]) and str(user_company) == str(get_item(update, get_id(update), 'company')):
+        if (user_role == user_roles[0] or user_role == user_roles[1]) and str(user_company) == str(get_item(update, get_id(update), 'company')):
             changes_to(1, 'change')
             message_change()
         else:
@@ -324,6 +326,39 @@ def keyboard_callback_handler(update: Update, context: CallbackContext):
         # sets counter to 0
         changes_to(0,'set_0')
 
+    if data == 'send':  
+        name = get_item(update, chat_id, 'create_name')
+        comp = get_item(update, chat_id, 'company').name
+        stor = get_item(update, chat_id, 'selected_storage').name
+        change_amount = get_item(update, chat_id, 'change_amount')
+
+        Product.objects.filter(name = name, storage = stor, company = comp).update(amount = change_amount)
+        query.edit_message_text(text='Changes saved!✅')
+        Profile.objects.filter(external_id = chat_id).update(change_amount = 0)
+
+    call_back = data.split('-') # splits callback to 2 parts
+    if len(call_back)  >=2 and (call_back[0] == "YES" or call_back[0] == "NO"): 
+        
+        def already_reacted():
+            query.answer('Application was already handled!')
+
+        application = Applications.objects.filter(id = int(call_back[1])).last() # getting application from DB
+        if call_back[0] == 'YES' and application.status == 'Waiting':
+            query.edit_message_text(text='Application accepted!✅')
+
+            application.status = 'Accepted'
+            application.save()
+
+        elif  call_back[0] == 'NO' and application.status == 'Waiting':
+            query.edit_message_text(text='Aplication discarded!❌')
+            
+            application.status = 'Denied'
+            application.save()
+        else:
+            already_reacted()
+            query.delete_message()
+
+    
     if data == 'set+10':
         changes_to(10, 'change')
         message_add()
@@ -340,20 +375,10 @@ def keyboard_callback_handler(update: Update, context: CallbackContext):
         changes_to(-1, 'change')
         message_add()
     
-    if data == 'send':  
-        name = get_item(update, chat_id, 'create_name')
-        comp = get_item(update, chat_id, 'company').name
-        stor = get_item(update, chat_id, 'selected_storage').name
-        change_amount = get_item(update, chat_id, 'change_amount')
-
-        Product.objects.filter(name = name, storage = stor, company = comp).update(amount = change_amount)
-        query.edit_message_text(text='Changes saved!✅')
-        Profile.objects.filter(external_id = chat_id).update(change_amount = 0)
-
     else:
         pass
 
-#create new product
+# create new product
 def create_prod(update: Update):
     chat_id = get_id(update)
     prod_name = get_item(update, chat_id, 'create_name')
@@ -384,7 +409,6 @@ def message_handler(update: Update, context: CallbackContext):
         ],
         resize_keyboard = True        
     )
-
 
     # adds users to profile
     p, _ = Profile.objects.get_or_create(
@@ -434,21 +458,11 @@ def message_handler(update: Update, context: CallbackContext):
         Profile.objects.filter(external_id = chat_id).update(state = 'default')
         create_prod(update)
 
-
     elif text == button_back:
-        # page = selected_page(update, get_item(update, chat_id, 'current_page'))
-        # if page == 1:
-        #     return selection(update, Company)
-        # elif page == 3:
-        #     return selection(update, Storage)
-        # elif page == 5:
-        #     return selection(update, Category)
-        # else:
         update.message.reply_text(
             text = 'Hello there 👋, choose company:',
             reply_markup = reply_markup,
-        )
-        # return 0
+        ) 
  
     companies_db = Company.objects.all()
     for company in companies_db:
@@ -479,6 +493,7 @@ def message_handler(update: Update, context: CallbackContext):
 
     Profile.objects.filter(external_id = get_id(update)).update(change_amount = 0)
 
+# start command
 def start(update: Update, context):
     reply_markup = ReplyKeyboardMarkup(
         keyboard=[
@@ -493,23 +508,3 @@ def start(update: Update, context):
         reply_markup = reply_markup,
     )
 
-# Связь с джанго через команду
-class Command(BaseCommand):
-    help = 'Storage Bot'
-
-    def handle(self, *args, **kwargs):
-        global bot
-        updater = Updater(
-            token = TOKEN,
-            use_context = True,
-        )
-        global bot
-        bot = Bot(
-            token = TOKEN,
-        )
-
-        updater.dispatcher.add_handler(MessageHandler(filters = Filters.all, callback = message_handler, run_async = True))
-        updater.dispatcher.add_handler(CallbackQueryHandler(callback=keyboard_callback_handler, run_async = True))
-
-        updater.start_polling()
-        updater.idle()
