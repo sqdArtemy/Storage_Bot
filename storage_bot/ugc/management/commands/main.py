@@ -1,10 +1,8 @@
-from os import name
 from re import U
-from django.db.models import query
+from typing import KeysView
 from storage_bot.settings import TOKEN
 from telegram.ext import *
 from telegram import *
-from django.core.management.base import BaseCommand
 from ugc.models import Applications, Profile, Company, Storage, Category, Product
 
 # buttons presets
@@ -27,7 +25,7 @@ BTN10_MINUS = "10minus",
 
 user_roles = ['Admin', 'Lab', 'S-Manager']
 
-#getting current user`s id
+# getting current user`s id
 def get_id(update: Update):
     chat_id = update.effective_message.chat_id
     return chat_id
@@ -70,52 +68,34 @@ def selected_page(update: Update, page):
     if page-1 >= 0:
         Profile.objects.filter(external_id = chat_id).update(previous_page = page - 1)
         Profile.objects.filter(external_id = chat_id).update(current_page = page)
-
         return page - 1
     else:
         return 0
         
-
-# updates info in DB about current page
-def sp(update: Update, page):
-    chat_id = get_id(update)
-    Profile.objects.filter(external_id = chat_id).update(current_page = page)
-
 # displays button menu in ralation with selected category
 def menu(update: Update, comp, m_type):
-    if m_type == 'companies':
-        update.message.reply_text(
-            text = f'Menu for company: {comp}',
-            reply_markup = ReplyKeyboardMarkup(
-                keyboard=[
-                    [
-                        KeyboardButton(text = button_storages),
-                        KeyboardButton(text = button_info_c),
-                    ],
-                    [
-                        KeyboardButton(text = button_back),
-                    ],
-                ],
-                resize_keyboard= True
-            )
-        )
-    if m_type == 'storages':
-        update.message.reply_text(
-            text = f'Menu for storage: {comp}',
-            reply_markup = ReplyKeyboardMarkup(
-                keyboard=[
-                    [
-                        KeyboardButton(text = button_categories),
-                        KeyboardButton(text = button_info_s),
-                    ],
-                    [
-                        KeyboardButton(text = button_back),
-                    ],
-                ],
-                resize_keyboard= True
-            )
-        )
+    buttons = []
 
+    if m_type == 'companies': # button layout for companies
+        text = f'Menu for company: {comp}'
+        buttons.append(KeyboardButton(text = button_storages))
+        buttons.append(KeyboardButton(text = button_info_c))
+
+    if m_type == 'storages': # button layout for storages
+        text = f'Menu for storage: {comp}'
+        buttons.append(KeyboardButton(text = button_categories))
+        buttons.append(KeyboardButton(text = button_info_s))
+    
+    Keyboard=[buttons, [KeyboardButton(text = button_back)]]
+
+    update.message.reply_text(
+            text=text,
+            reply_markup=ReplyKeyboardMarkup(
+                keyboard=Keyboard,
+                resize_keyboard=True,
+                one_time_keyboard=True,
+            )
+        )
 
 # creates buttons with respect to selected category
 def selection(update: Update, b_type):
@@ -153,7 +133,7 @@ def selection(update: Update, b_type):
 
     update.message.reply_text(
             text = 'List 📝 ',
-            reply_markup= ReplyKeyboardMarkup(
+            reply_markup=ReplyKeyboardMarkup(
                 keyboard=Keyboard,
                 resize_keyboard=True,
                 one_time_keyboard=True
@@ -162,16 +142,18 @@ def selection(update: Update, b_type):
 
 # displays info about company or storage
 def info_about(update: Update, inf):
+    Keyboard = ReplyKeyboardMarkup(
+                keyboard = [
+                    [KeyboardButton(text = button_back)],
+                ],
+                resize_keyboard= True
+            )
+
     if inf == Company:
         comp = get_item(update, get_id(update), 'company')
         update.message.reply_text(
             text = f"Name: {comp.name} \n Region: {comp.region} \n City: {comp.city} \n Address: {comp.adress} \n Phone: +{comp.phone}",
-            reply_markup = ReplyKeyboardMarkup(
-                keyboard = [
-                    [KeyboardButton(text = button_back),],
-                ],
-                resize_keyboard= True
-            )
+            reply_markup = Keyboard
         )
     elif inf == Storage:
         bot = Bot(token = TOKEN)
@@ -179,20 +161,11 @@ def info_about(update: Update, inf):
         chat_id = update.effective_message.chat_id
         update.message.reply_text(
             text = f"Name: {storage.name} \n Address: {storage.adress} \n Location:",
-            reply_markup = ReplyKeyboardMarkup(
-                keyboard = [
-                    [
-                        KeyboardButton(text = button_back),
-                    ],
-                ],
-                resize_keyboard=True
-            )
+            reply_markup = Keyboard
         )
-        #Sends storage`s location
+        # sends storage`s location
         bot.send_location(chat_id = chat_id ,latitude = storage.latitude, longitude = storage.longitude)
         
-
-
 # inline keyboard for changing amount of prduct
 def base_inline_keyboard(update: Update, type_p):
     storage = get_item(update, get_id(update), 'selected_storage')
@@ -241,15 +214,14 @@ def base_inline_keyboard(update: Update, type_p):
 
     return InlineKeyboardMarkup(keyboard)
 
-
-# Вывод меню изменения количества товара
+# displays menu with adjusted changes of product
 def product_adjustments(update, prod):
     update.message.reply_text(
         text = f'{prod.name} ({prod.measurement})',
         reply_markup = base_inline_keyboard(update,'change')
     )
 
-# Обработка всех инлайн кнопок 
+# handles callbacks from all inline buttons
 def keyboard_callback_handler(update: Update, context: CallbackContext):
 
     chat_id = update.effective_message.chat_id
@@ -268,7 +240,6 @@ def keyboard_callback_handler(update: Update, context: CallbackContext):
         profiles_db = Profile.objects.filter(external_id = chat_id)
         for item in profiles_db:
             user_change = float(item.change_amount)
-
         return user_change
 
     def changes_to(value, way):
@@ -357,8 +328,7 @@ def keyboard_callback_handler(update: Update, context: CallbackContext):
         else:
             already_reacted()
             query.delete_message()
-
-    
+   
     if data == 'set+10':
         changes_to(10, 'change')
         message_add()
@@ -507,4 +477,3 @@ def start(update: Update, context):
         text = 'Hello there 👋, choose company:',
         reply_markup = reply_markup,
     )
-
