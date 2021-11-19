@@ -12,36 +12,39 @@ from rest_framework.views import APIView
 from telegram.ext import Updater
 import os
 
+
 # Create your views here.
 class Test(APIView):
     def get(self, request, *args, **options):
-        #THIS WHOLE THING FOR SETTING WEBHOOK
+        # THIS WHOLE THING FOR SETTING WEBHOOK
         PORT = int(os.environ.get('PORT', '8000'))
-        bot = Bot(token = TOKEN)
-        url = "https://6f57-213-230-127-84.ngrok.io/" #web-app link
+        bot = Bot(token=TOKEN)
+        url = "https://6f57-213-230-127-84.ngrok.io/"  # web-app link
 
         bot.setWebhook(url + 'storage/')
 
         updater = Updater(
-            bot = bot,
-            use_context = True,
+            bot=bot,
+            use_context=True,
         )
 
         updater.start_webhook(listen="0.0.0.0",
-            port=PORT,
-            url_path=TOKEN,
-            webhook_url=(url+'storage/'))
+                              port=PORT,
+                              url_path=TOKEN,
+                              webhook_url=(url+'storage/'))
 
     def post(self, request, *args, **options):
 
         PORT = int(os.environ.get('PORT', '8000'))
 
-        bot = Bot(token = TOKEN)
+        bot = Bot(token=TOKEN)
         dispatcher = Dispatcher(bot, None, workers=6)
 
         dispatcher.add_handler(CommandHandler('start', start))
-        dispatcher.add_handler(MessageHandler(filters = Filters.all, callback = message_handler))
-        dispatcher.add_handler(CallbackQueryHandler(callback=keyboard_callback_handler))
+        dispatcher.add_handler(MessageHandler(
+            filters=Filters.all, callback=message_handler))
+        dispatcher.add_handler(CallbackQueryHandler(
+            callback=keyboard_callback_handler))
 
-        dispatcher.process_update( Update.de_json(request.data, bot))
+        dispatcher.process_update(Update.de_json(request.data, bot))
         return JsonResponse({"ok": "POST request processed"})
